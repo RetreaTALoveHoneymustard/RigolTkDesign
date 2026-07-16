@@ -67,6 +67,7 @@ class Scope:
             self.scope.write(":STOP")
 
     def configure_coupling(self, channel: int, coupling: str):
+        """Sets the coupling mode of the specified channel AC , DC , GND"""
         print(f"Ensuring Channel {channel} is ON...")
         self.scope.write(f":CHANnel{channel}:DISPlay ON") # Turns the channel graphics on
 
@@ -74,6 +75,11 @@ class Scope:
         self.scope.write(f":CHANnel{channel}:COUPling {coupling}")
 
     def configure_probe(scope, channel: int, attenuation: str):
+        """Sets the probe ratio of the specified analog channel Accepted arguments : {0.001|0.002|0.005|0.01|0.02|
+        0.05|0.1|0.2|0.5|1|2|5|10|20|50|
+        100|200|500|1000|2000|5000|
+        10000|20000|50000}
+        """
         print(f"Ensuring Channel {channel} is ON...")
         scope.write(f":CHANnel{channel}:DISPlay ON") # Turns the channel graphics on
         
@@ -81,6 +87,7 @@ class Scope:
         scope.write(f":CHANnel{channel}:PROBe {attenuation}")
 
     def toggle_invert(self, channel: int):
+        """Turns on or off the waveform invert for the specified channel , Accpeted arguments : 1|ON , 0|OFF"""
         print(f"Ensuring Channel {channel} is ON...")
         self.scope.write(f":CHANnel{channel}:DISPlay ON") # Turns the channel graphics on
 
@@ -95,6 +102,7 @@ class Scope:
         self.scope.write(f":CHANnel{channel}:INVert {new_status}")
 
     def voltage_scale(self, channel: int, scale: float):
+        """Sets the vertical scale of the specified channel. Its default unit is V/div"""
         print(f"Ensuring Channel {channel} is ON...")
         self.scope.write(f":CHANnel{channel}:DISPlay ON") # Turns the channel graphics on
         
@@ -102,6 +110,8 @@ class Scope:
         self.scope.write(f":CHANnel{channel}:SCAle {scale}")
 
     def trigger_level(self, level: float):
+        """Sets or queries the trigger level of Edge trigger. The unit is the same as that of
+        current amplitude of the selected source."""
         print(f"Setting trigger level to {level}V...")
         self.scope.write(f":TRIGger:PULSe:LEVel {level}")
 
@@ -227,7 +237,8 @@ class ScopeApp:
         
         self.left_column.grid_rowconfigure(0, weight=1)
         self.left_column.grid_columnconfigure(0, weight=1)
-        # CH1
+        
+        #----Set Terminal Frame----#
         terminal_label = ttk.Label(self.left_column, text="Terminal", font=self.channel_font)
         self.terminal_frame = ttk.LabelFrame(self.left_column, labelwidget=terminal_label)
         self.terminal_frame.grid(row=0, column=0, pady=5, sticky="nsew")
@@ -310,7 +321,7 @@ class ScopeApp:
         # The actual terminal frame container aligned nicely via Grid layout
         text_container_frame = tk.Frame(self.bottomtaskbar_frame, bg="#000000", bd=1, relief="solid")
         text_container_frame.grid(column=3, row=1, rowspan=4, columnspan=3, sticky="nsew", pady=10)
-        
+
         # Make the container frame itself expandable
         text_container_frame.grid_rowconfigure(0, weight=1)
         text_container_frame.grid_columnconfigure(0, weight=1)
@@ -326,7 +337,6 @@ class ScopeApp:
             width=75,   # characters wide
             height=10   # lines tall
         )
-        # <-- THIS WAS MISSING: actually place the widget
         self.terminal_log.grid(row=0, column=0, sticky="nsew")
 
         #-----CHECKBOX FOR CHANNELS-----------
@@ -509,9 +519,9 @@ class ScopeApp:
             bd=0, state="disabled", command=self.scope_stop
         )
 
-        self.trigger_mode_var = tk.StringVar()
+        self.mode_var = tk.StringVar()
         self.drop_trig_mode = ttk.Combobox(
-            self.system_frame, textvariable=self.trigger_mode_var,
+            self.system_frame, textvariable=self.mode_var,
             font=self.button_font, state="readonly"
         )
 
@@ -541,7 +551,7 @@ class ScopeApp:
         self.drop_trig_mode['values'] = ('AUTO', 'NORMAL', 'SINGLE')
         self.drop_trig_mode.current(0)
         self.drop_trig_mode.grid(column=2, row=2, columnspan=2, padx=5, pady=5, sticky="ew")
-        self.drop_trig_mode.bind("<<ComboboxSelected>>", self.change_trigger_mode)
+        self.drop_trig_mode.bind("<<ComboboxSelected>>", self.change_mode)
 
         # Storage Frame
         storage_config_label = ttk.Label(self.right_column, text="Storage and Etc.", font=self.default_font)
@@ -564,14 +574,41 @@ class ScopeApp:
             bg="#080808", fg="#1274e4", activebackground="#000000", activeforeground="#044fa4",
             bd=0, state="disabled", command=self.autoset_command
         )
-        self.btn_live_view.grid(column=0, row=2, padx=10, pady=10, ipadx=5, ipady=5, sticky="ew")
+        self.btn_log_clear = tk.Button(
+            self.storage_frame, text="CLEAR LOG MESSAGE", font=self.button_font,
+            bg="#32D9C0", fg="#000000", activebackground="#8DE0D4", activeforeground="#000000",
+            bd=0, state="normal", command=self.clear_log_terminal
+        )
         self.btn_screenshot.grid(column=0, row=0, padx=10, pady=10, ipadx=5, ipady=5, sticky="ew")
         self.btn_autoset.grid(column=0, row=1, padx=10, pady=10, ipadx=5, ipady=5, sticky="ew")
+        self.btn_live_view.grid(column=0, row=2, padx=10, pady=10, ipadx=5, ipady=5, sticky="ew")
+        self.btn_log_clear.grid(column=1, row=0, padx=10, pady=10, ipadx=5, ipady=5, sticky="ew")
+        
+        
 
 
     # ==========================================
     # EVENT LOGIC METHODS (Clean UI Layer)
     # ==========================================
+    def log_to_terminal(self, title: str, message: str = None):
+        if message is None:
+            message = title
+            title = None
+
+        self.terminal_log.config(state="normal")
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        if title:
+            self.terminal_log.insert(tk.END, f"[{timestamp}] {title}: {message}\n")
+        else:
+            self.terminal_log.insert(tk.END, f"[{timestamp}] {message}\n")
+        self.terminal_log.see(tk.END)
+        self.terminal_log.config(state="disabled")
+
+    def clear_log_terminal(self):
+        self.terminal_log.config(state="normal")
+        self.terminal_log.delete(1.0, tk.END)
+        self.terminal_log.config(state="disabled") 
+
     def connect_scope(self):
         """Initializes backend class and updates buttons."""
         self.btn_connect.config(text="SEARCHING...", state="disabled")
@@ -581,7 +618,7 @@ class ScopeApp:
             self.oscilloscope = Scope()
             idn_str = self.oscilloscope.get_idn() # Pure OOP abstraction call!
             
-            messagebox.showinfo("Success", f"Connected to Rigol Scope:\n{idn_str}")
+            self.log_to_terminal("Success", f"Connected to Rigol Scope: {idn_str}")
             self.btn_connect.config(text="CONNECTED", bg="#27ae60")
             self.btn_disconnect.config(state="normal")
             self.btn_sendcmd.config(state="normal")
@@ -599,7 +636,7 @@ class ScopeApp:
             self.txt_idn_display.config(state="readonly")     
             
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to connect:\n{e}")
+            self.log_to_terminal("Error", f"Failed to connect: {e}")
             self.btn_connect.config(text="CONNECT", bg="#2ecc71", state="normal")
             self.oscilloscope = None
             self.txt_idn_display.config(state="normal")
@@ -612,7 +649,7 @@ class ScopeApp:
             self.oscilloscope.disconnect()
             self.oscilloscope = None
             
-        messagebox.showinfo("Disconnected", "Session cleanly terminated.")
+        self.log_to_terminal("Disconnected", "Session cleanly terminated.")
         self.btn_connect.config(text="CONNECT", bg="#2ecc71", state="normal")
         self.btn_disconnect.config(state="disabled")
         self.btn_sendcmd.config(state="disabled")
@@ -631,7 +668,7 @@ class ScopeApp:
 
     def send_scpi_command(self):
         if not self.oscilloscope:
-            messagebox.showerror("No Connection", "Connect to the scope first!")
+            self.log_to_terminal("No Connection", "Connect to the scope first!")
             return
             
         command = self.ip_input.get().strip()
@@ -641,104 +678,114 @@ class ScopeApp:
         try:
             if "?" in command:
                 response = self.oscilloscope.query_raw(command)
-                messagebox.showinfo("Query Response", f"Sent: {command}\n\nReceived: {response}")
+                self.log_to_terminal("Query Response", f"Sent: {command} Received: {response}")
             else:
                 self.oscilloscope.write(command)
-                messagebox.showinfo("Command Sent", f"Successfully wrote:\n{command}")
+                self.log_to_terminal("Command Sent", f"Successfully wrote: {command}")
         except Exception as e:
-            messagebox.showerror("Command Error", f"Execution failed:\n{e}")
+            self.log_to_terminal("Command Error", f"Execution failed: {e}")
 
     def scope_run(self):
         if not self.oscilloscope:
-            messagebox.showerror("Error", "Oscilloscope is not connected!")
+            self.log_to_terminal("Error", "Oscilloscope is not connected!")
             return
         try:
             self.oscilloscope.run()
+            self.log_to_terminal("Successfully", "Oscilloscope is running now!")
         except Exception as e:
-            messagebox.showerror("SCPI Error", f"Failed to send RUN command:\n{e}")
+            self.log_to_terminal("SCPI Error", f"Failed to send RUN command: {e}")
 
     def scope_stop(self):
         if not self.oscilloscope:
-            messagebox.showerror("Error", "Oscilloscope is not connected!")
+            self.log_to_terminal("Error", "Oscilloscope is not connected!")
             return 
         try:
             self.oscilloscope.stop()
+            self.log_to_terminal("Successfully", "Oscilloscope is stopping!")
         except Exception as e:
-            messagebox.showerror("SCPI Error", f"Failed to send STOP command:\n{e}")
+            self.log_to_terminal("SCPI Error", f"Failed to send STOP command: {e}")
 
-    def change_trigger_mode(self, event=None):
+    def change_mode(self, event=None):
+        """
+            Changed mode into AUTO , NORMAL , SINGLE
+        """
         if not self.oscilloscope:
-            messagebox.showerror("Error", "Oscilloscope is not connected!")
+            self.log_to_terminal("Error", "Oscilloscope is not connected!")
             return
         
-        selected_mode = self.trigger_mode_var.get()
+        selected_mode = self.mode_var.get()
         try:
-            self.oscilloscope.set_trigger_sweep(selected_mode)  
+            self.oscilloscope.set_trigger_sweep(selected_mode)
+            self.log_to_terminal("Successfully", f"Oscilloscope changed trigger mode into: {selected_mode} !")
         except Exception as e:
-            messagebox.showerror("SCPI Error", f"Failed to set trigger mode:\n{e}")
+            self.log_to_terminal("SCPI Error", f"Failed to set trigger mode: {e}")
     
     def take_screenshot(self):
         """Action routine triggered by clicking the layout button."""
         if not self.oscilloscope:
-            messagebox.showerror("Error", "Oscilloscope is not connected!")
+            self.log_to_terminal("Error", "Oscilloscope is not connected!")
             return
             
         try:
             image_data = self.oscilloscope.capture_screenshot()
             saved_path = self.oscilloscope.save_png(image_data, directory="./screenshots")
             
-            messagebox.showinfo("Screenshot Saved", f"Successfully saved:\n{saved_path.resolve()}")
+            messagebox.showinfo("Screenshot Saved", f"Successfully saved: {saved_path.resolve()}")
         except Exception as e:
-            messagebox.showerror("Capture Error", f"Failed to take screenshot:\n{e}")
+            self.log_to_terminal("Capture Error", f"Failed to take screenshot: {e}")
     
     def autoset_command(self):
         if not self.oscilloscope:
-            messagebox.showerror("Error", "Oscilloscope is not connected!")
+            self.log_to_terminal("Error", "Oscilloscope is not connected!")
             return 
         try:
             self.oscilloscope.trigger_autoset()
+            self.log_to_terminal("Successfully", "Oscilloscope Autosetting now!")
         except Exception as e:
-            messagebox.showerror("SCPI Error", f"Failed to send AUTOSET command:\n{e}")
+            self.log_to_terminal("SCPI Error", f"Failed to send AUTOSET command: {e}")
 
     def change_trigger_source(self, event=None):
         if not self.oscilloscope:
-            messagebox.showerror("Error", "Oscilloscope is not connected!")
+            self.log_to_terminal("Error", "Oscilloscope is not connected!")
             return
     
         selected_source = self.trigger_source_var.get()
         try:
             if selected_source == "NONE":
                 self.oscilloscope.set_trigger_source("EXT") 
+                self.log_to_terminal("Successfully", f"Oscilloscope changed trigger source into: {selected_source} !")
             else:
                 self.oscilloscope.set_trigger_source(selected_source)
         except Exception as e:
-            messagebox.showerror("SCPI Error", f"Failed to set trigger mode:\n{e}")
+            self.log_to_terminal("SCPI Error", f"Failed to set trigger mode: {e}")
 
     def change_trigger_slope(self, event=None):
         if not self.oscilloscope:
-            messagebox.showerror("Error", "Oscilloscope is not connected!")
+            self.log_to_terminal("Error", "Oscilloscope is not connected!")
             return
     
         selected_slope = self.trigger_slope_var.get()
         try:
             self.oscilloscope.set_trigger_slope(selected_slope)
+            self.log_to_terminal("Successfully", f"Oscilloscope sets the edge trigger into: {selected_slope} !")
         except Exception as e:
-            messagebox.showerror("SCPI Error", f"Failed to set trigger mode:\n{e}")
+            self.log_to_terminal("SCPI Error", f"Failed to set trigger mode: {e}")
 
     def change_trigger_coupling(self, event=None):
         if not self.oscilloscope:
-            messagebox.showerror("Error", "Oscilloscope is not connected!")
+            self.log_to_terminal("Error", "Oscilloscope is not connected!")
             return
     
         selected_coup = self.trigger_coup_var.get()
         try:
             self.oscilloscope.set_trigger_coupling(selected_coup)
+            self.log_to_terminal("Successfully", f"Oscilloscope set the trigger coupling into: {selected_coup} !")
         except Exception as e:
-            messagebox.showerror("SCPI Error", f"Failed to set trigger mode:\n{e}")
+            self.log_to_terminal("SCPI Error", f"Failed to set trigger mode: {e}")
     
     def change_volt_div(self, event = None):
         if not self.oscilloscope:
-            messagebox.showerror("Error", "Oscilloscope is not connected!")
+            self.log_to_terminal("Error", "Oscilloscope is not connected!")
             return
             
         selected_display = self.volt_div.get()
@@ -750,18 +797,19 @@ class ScopeApp:
             '2 V': '2.0',
             '10 V': '10.0'
         }
-        scpi_value = volt_map.get(selected_display, 1.0)
+        mapping_volt_value = volt_map.get(selected_display, 1.0)
 
         selected_channel = self.active_channel.get()
         
         try:
-            self.oscilloscope.voltage_scale(int(selected_channel),float(scpi_value))
+            self.oscilloscope.voltage_scale(int(selected_channel),float(mapping_volt_value))
+            self.log_to_terminal("Successfully", f"Oscilloscope Channel{selected_channel} vertical scale sets into: {mapping_volt_value} !")
         except Exception as e:
-            messagebox.showerror("SCPI Error", f"Failed to set vertical scale:\n{e}")
+            self.log_to_terminal("SCPI Error", f"Failed to set vertical scale: {e}")
 
     def change_coupling(self, event = None):
         if not self.oscilloscope:
-            messagebox.showerror("Error", "Oscilloscope is not connected!")
+            self.log_to_terminal("Error", "Oscilloscope is not connected!")
             return
             
         selected_display = self.coup_channel.get()
@@ -769,51 +817,55 @@ class ScopeApp:
         
         try:
             self.oscilloscope.configure_coupling(int(selected_channel),selected_display)
+            self.log_to_terminal("Successfully", f"Oscilloscope Channel{selected_channel} copuling modes into: {selected_display} !")
         except Exception as e:
-            messagebox.showerror("SCPI Error", f"Failed to set vertical scale:\n{e}")
+            self.log_to_terminal("SCPI Error", f"Failed to set vertical scale: {e}")
     
     def invert_signal(self):
         if not self.oscilloscope:
-            messagebox.showerror("Error", "Oscilloscope is not connected!")
+            self.log_to_terminal("Error", "Oscilloscope is not connected!")
             return
         
         selected_channel = self.active_channel.get()
         try:
             self.oscilloscope.toggle_invert(int(selected_channel))
+            self.log_to_terminal("Successfully", f"Oscilloscope Channel{selected_channel} inverted!")
 
         except Exception as e:
-            messagebox.showerror("SCPI Error", f"Failed to send RUN command:\n{e}")
+            self.log_to_terminal("SCPI Error", f"Failed to send RUN command: {e}")
     
     def time_divide_configure(self, event=None):
         if not self.oscilloscope:
-            messagebox.showerror("Error", "Oscilloscope is not connected!")
+            self.log_to_terminal("Error", "Oscilloscope is not connected!")
             return
             
         selected_display = self.drop_time_div.get()
         time_map = {
            '100 us' : 0.0001 , '200 us' : 0.0002, '500 us': 0.0005 ,'1 ms': 0.001,'2 ms': 0.002,'5 ms':0.005,'10 ms' : 0.010
         }
-        scpi_value = time_map.get(selected_display, 0.001)
+        mapping_time_value = time_map.get(selected_display, 0.001)
         try:
-            self.oscilloscope.time_scale(float(scpi_value))
+            self.oscilloscope.time_scale(float(mapping_time_value))
+            self.log_to_terminal("Successfully", f"Oscilloscope horizontal scale sets into: {mapping_time_value} !")
         except Exception as e:
-            messagebox.showerror("SCPI Error", f"Failed to set vertical scale:\n{e}")
+            self.log_to_terminal("SCPI Error", f"Failed to set horizontal scale: {e}")
         
     def probe_setting(self, event=None):
         if not self.oscilloscope:
-            messagebox.showerror("Error", "Oscilloscope is not connected!")
+            self.log_to_terminal("Error", "Oscilloscope is not connected!")
             return
             
         selected_display = self.probe_config_channel.get()
         selected_channel = self.active_channel.get()
         try:
             self.oscilloscope.configure_probe(int(selected_channel),str(selected_display))
+            self.log_to_terminal("Successfully", f"Oscilloscope Channel{selected_channel} probe sets into: {selected_display} !")
         except Exception as e:
-            messagebox.showerror("SCPI Error", f"Failed to set vertical scale:\n{e}")
+            self.log_to_terminal("SCPI Error", f"Failed to set probe attenuation: {e}")
     
     def send_level_trig(self):
         if not self.oscilloscope:
-            messagebox.showerror("No Connection", "Connect to the scope first!")
+            self.log_to_terminal("No Connection", "Connect to the scope first!")
             return
             
         levels_trg = self.level_trig_input.get().strip()
@@ -822,19 +874,13 @@ class ScopeApp:
             
         try:
             self.oscilloscope.trigger_level(float(levels_trg))
+            self.log_to_terminal("Successfully", f"Oscilloscope trigger level changed: {levels_trg} !")
         except Exception as e:
-            messagebox.showerror("Command Error", f"Execution failed:\n{e}")
-
-    def log_to_terminal(self, message: str):
-        self.terminal_log.config(state="normal")
-        timestamp = datetime.now().strftime("%H:%M:%S")
-        self.terminal_log.insert(tk.END, f"[{timestamp}] {message}\n")
-        self.terminal_log.see(tk.END)
-        self.terminal_log.config(state="disabled")
+            self.log_to_terminal("Command Error", f"Execution failed: {e}")
     
     def toggle_live_view(self):
         if not self.oscilloscope:
-            messagebox.showerror("Error", "Oscilloscope is not connected!")
+            self.log_to_terminal("Error", "Oscilloscope is not connected!")
             return
 
         self.live_view_running = not self.live_view_running
@@ -855,7 +901,7 @@ class ScopeApp:
             target_w = self.live_view_container.winfo_width()
             target_h = self.live_view_container.winfo_height()
             if target_w > 1 and target_h > 1:
-                img.thumbnail((target_w, target_h), Image.LANCZOS)  # preserves aspect, caps size
+                img.thumbnail((target_w, target_h), Image.LANCZOS)
 
             photo = ImageTk.PhotoImage(img)
             self.live_view_label.config(image=photo)
@@ -868,4 +914,6 @@ class ScopeApp:
 if __name__ == "__main__":
     root = tk.Tk()
     app = ScopeApp(root)
+    app.log_to_terminal("Welcome to Rigol GUI Tkinter using python!")
+    app.log_to_terminal("Oscilloscope type required: DHO800++")
     root.mainloop()
