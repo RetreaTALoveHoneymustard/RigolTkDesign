@@ -74,17 +74,17 @@ class Scope:
         print(f"Setting Channel {channel} coupling to {coupling}...")
         self.scope.write(f":CHANnel{channel}:COUPling {coupling}")
 
-    def configure_probe(scope, channel: int, attenuation: str):
+    def configure_probe(self, channel: int, attenuation: str):
         """Sets the probe ratio of the specified analog channel Accepted arguments : {0.001|0.002|0.005|0.01|0.02|
         0.05|0.1|0.2|0.5|1|2|5|10|20|50|
         100|200|500|1000|2000|5000|
         10000|20000|50000}
         """
         print(f"Ensuring Channel {channel} is ON...")
-        scope.write(f":CHANnel{channel}:DISPlay ON") # Turns the channel graphics on
+        self.scope.write(f":CHANnel{channel}:DISPlay ON") # Turns the channel graphics on
         
         print(f"Setting Channel {channel} probe attenuation to {attenuation}...")
-        scope.write(f":CHANnel{channel}:PROBe {attenuation}")
+        self.scope.write(f":CHANnel{channel}:PROBe {attenuation}")
 
     def toggle_invert(self, channel: int):
         """Turns on or off the waveform invert for the specified channel , Accpeted arguments : 1|ON , 0|OFF"""
