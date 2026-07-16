@@ -1,12 +1,10 @@
 import tkinter as tk
-from tkinter import ttk , messagebox , font as tkfont
-import numpy as np
+from tkinter import ttk , messagebox , font as tkfont , scrolledtext
 import pyvisa
 from datetime import datetime
 from pathlib import Path
-
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from matplotlib.figure import Figure
+from PIL import Image, ImageTk
+import io
 
 # =========================================================================
 # HARDWARE / BACKEND LAYER (Manages all VISA & SCPI communications)
@@ -194,6 +192,7 @@ class ScopeApp:
         self.root.title("Rigol Oscilloscope Controller")
         self.root.geometry("1600x1400")
         self.oscilloscope = None
+        self.live_view_running = False
         self.channel_font = tkfont.Font(family="Candara Light", size=14, weight="bold")
         self.default_font = tkfont.Font(family="Yu Gothic UI Semilight", size="12")
         self.button_font = tkfont.Font(family="Yu Gothic UI Semilight", size="8", weight="bold")
@@ -204,14 +203,13 @@ class ScopeApp:
         self.main_container.grid_columnconfigure(0, weight=4)
         self.main_container.grid_columnconfigure(1, weight=1) 
         self.main_container.grid_rowconfigure(0, weight=1)
-        
+    
         #---Left-Side Container 80%---
         self.left_column = ttk.Frame(self.main_container, padding="5")
         self.left_column.grid(row=0, column=0, sticky="nsew")
         
         self.left_column.grid_rowconfigure(0, weight=1)
         self.left_column.grid_columnconfigure(0, weight=1)
-
         # CH1
         terminal_label = ttk.Label(self.left_column, text="Terminal", font=self.channel_font)
         self.terminal_frame = ttk.LabelFrame(self.left_column, labelwidget=terminal_label)
@@ -219,6 +217,16 @@ class ScopeApp:
 
         self.terminal_frame.grid_rowconfigure(0,weight=6)
         self.terminal_frame.grid_rowconfigure(1,weight=4)
+        self.terminal_frame.grid_columnconfigure(0, weight=1)   # <-- add this
+
+        # Fixed-size container that will NOT grow to fit its contents
+        self.live_view_container = tk.Frame(self.terminal_frame, bg="black")
+        self.live_view_container.grid(row=0, column=0, sticky="nsew")
+        self.live_view_container.config(width=800, height=480)
+        self.live_view_container.grid_propagate(False)  # <-- key line: lock the size
+
+        self.live_view_label = tk.Label(self.live_view_container, bg="black")
+        self.live_view_label.pack(fill="both", expand=True)
 
         self.bottomtaskbar_frame = ttk.Frame(self.terminal_frame,padding=5)
         self.bottomtaskbar_frame.grid(row=1,sticky="nsew")
@@ -265,6 +273,27 @@ class ScopeApp:
             bg="#d8cf48", fg="#3c0854", activebackground="#f2e640", activeforeground="#230332",
             bd=0 , command=self.invert_signal
         )
+        # The actual terminal frame container aligned nicely via Grid layout
+        text_container_frame = tk.Frame(self.bottomtaskbar_frame, bg="#000000", bd=1, relief="solid")
+        text_container_frame.grid(column=3, row=1, rowspan=4, columnspan=3, sticky="nsew", pady=10)
+
+        # Make the container frame itself expandable
+        text_container_frame.grid_rowconfigure(0, weight=1)
+        text_container_frame.grid_columnconfigure(0, weight=1)
+
+        self.terminal_log = scrolledtext.ScrolledText(
+            text_container_frame,
+            wrap="word",
+            bg="#000000",
+            fg="#00FF00",
+            insertbackground="white",
+            font=("Courier New", 10),
+            state="disabled",
+            width=75,   # characters wide
+            height=10   # lines tall
+        )
+        # <-- THIS WAS MISSING: actually place the widget
+        self.terminal_log.grid(row=0, column=0, sticky="nsew")
 
         #-----CHECKBOX FOR CHANNELS-----------
         self.rad_ch1.grid(column=0, row=1, padx=5, pady=5, sticky="w")
@@ -275,7 +304,7 @@ class ScopeApp:
         self.btn_invert.grid(column=1 , row=2 , padx=5 , pady=5 , ipadx = 5 , ipady =5 , sticky="w")
 
         self.lbl_volt_div_ch1.grid(column=1, row=1, padx=5, pady=(2, 22), sticky="w") 
-        self.volt_div['values'] = ('500 mV','1 V', '2 V', '10 V')
+        self.volt_div['values'] = ('100 mV','200 mV','500 mV','1 V', '2 V', '10 V')
         self.volt_div.current(0)
         self.volt_div.grid(column=1, row=1, columnspan=2, padx=5, pady=(50,10), sticky="ew")
         self.volt_div.bind("<<ComboboxSelected>>", self.change_volt_div)
@@ -455,6 +484,11 @@ class ScopeApp:
         self.storage_frame = ttk.LabelFrame(self.right_column, labelwidget=storage_config_label)
         self.storage_frame.grid(row=3, column=0, pady=5, sticky="nsew")
 
+        self.btn_live_view = tk.Button(
+            self.storage_frame, text="START LIVE VIEW", font=self.button_font,
+            bg="#3498db", fg="#ffffff", bd=0, state="disabled",command=self.toggle_live_view
+        )
+        self.btn_live_view.grid(column=0, row=2, padx=10, pady=10, ipadx=5, ipady=5, sticky="ew")
 
         self.btn_screenshot = tk.Button(
             self.storage_frame, text="CAPTURE SCREENSHOT", font=self.button_font,
@@ -466,6 +500,7 @@ class ScopeApp:
             bg="#080808", fg="#1274e4", activebackground="#000000", activeforeground="#044fa4",
             bd=0, state="disabled", command=self.autoset_command
         )
+        self.btn_live_view.grid(column=0, row=2, padx=10, pady=10, ipadx=5, ipady=5, sticky="ew")
         self.btn_screenshot.grid(column=0, row=0, padx=10, pady=10, ipadx=5, ipady=5, sticky="ew")
         self.btn_autoset.grid(column=0, row=1, padx=10, pady=10, ipadx=5, ipady=5, sticky="ew")
 
@@ -490,6 +525,7 @@ class ScopeApp:
             self.btn_stop.config(state="normal")
             self.btn_screenshot.config(state="normal")
             self.btn_autoset.config(state="normal")
+            self.btn_live_view.config(state="normal")
             
             self.txt_idn_display.config(state="normal")      
             self.txt_idn_display.delete(0, tk.END)             
@@ -518,6 +554,12 @@ class ScopeApp:
         self.btn_stop.config(state="disabled")
         self.btn_screenshot.config(state="disabled")
         self.btn_autoset.config(state="disabled")
+        self.live_view_running = False
+        self.btn_live_view.config(state="disabled", text="START LIVE VIEW", bg="#3498db")
+        self.txt_idn_display.config(state="normal")
+        self.txt_idn_display.delete(0, tk.END)             
+        self.txt_idn_display.insert(0, "Scope : Not Connect") 
+        self.txt_idn_display.config(state="readonly")
 
     def send_scpi_command(self):
         if not self.oscilloscope:
@@ -533,7 +575,7 @@ class ScopeApp:
                 response = self.oscilloscope.query_raw(command)
                 messagebox.showinfo("Query Response", f"Sent: {command}\n\nReceived: {response}")
             else:
-                self.oscilloscope.write_raw(command)
+                self.oscilloscope.write(command)
                 messagebox.showinfo("Command Sent", f"Successfully wrote:\n{command}")
         except Exception as e:
             messagebox.showerror("Command Error", f"Execution failed:\n{e}")
@@ -633,6 +675,8 @@ class ScopeApp:
             
         selected_display = self.volt_div.get()
         volt_map = {
+            '100 mV' : '0.1',
+            '200 mV' : '0.2',
             '500 mV': '0.5',
             '1 V': '1.0',
             '2 V': '2.0',
@@ -673,6 +717,46 @@ class ScopeApp:
             self.oscilloscope.time_scale(float(scpi_value))
         except Exception as e:
             messagebox.showerror("SCPI Error", f"Failed to set vertical scale:\n{e}")
+    
+    def log_to_terminal(self, message: str):
+        self.terminal_log.config(state="normal")
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        self.terminal_log.insert(tk.END, f"[{timestamp}] {message}\n")
+        self.terminal_log.see(tk.END)
+        self.terminal_log.config(state="disabled")
+    
+    def toggle_live_view(self):
+        if not self.oscilloscope:
+            messagebox.showerror("Error", "Oscilloscope is not connected!")
+            return
+
+        self.live_view_running = not self.live_view_running
+        if self.live_view_running:
+            self.btn_live_view.config(text="STOP LIVE VIEW", bg="#e74c3c")
+            self.update_live_view()
+        else:
+            self.btn_live_view.config(text="START LIVE VIEW", bg="#3498db")
+
+    def update_live_view(self):
+        if not self.live_view_running or not self.oscilloscope:
+            return
+
+        try:
+            png_bytes = self.oscilloscope.capture_screenshot()
+            img = Image.open(io.BytesIO(png_bytes))
+
+            target_w = self.live_view_container.winfo_width()
+            target_h = self.live_view_container.winfo_height()
+            if target_w > 1 and target_h > 1:
+                img.thumbnail((target_w, target_h), Image.LANCZOS)  # preserves aspect, caps size
+
+            photo = ImageTk.PhotoImage(img)
+            self.live_view_label.config(image=photo)
+            self.live_view_label.image = photo
+        except Exception as e:
+            print(f"Live view frame failed: {e}")
+
+        self.root.after(500, self.update_live_view)
 
 if __name__ == "__main__":
     root = tk.Tk()
