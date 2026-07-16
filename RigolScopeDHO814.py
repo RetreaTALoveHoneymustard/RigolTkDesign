@@ -66,6 +66,20 @@ class Scope:
         if self.scope:
             self.scope.write(":STOP")
 
+    def configure_coupling(self, channel: int, coupling: str):
+        print(f"Ensuring Channel {channel} is ON...")
+        self.scope.write(f":CHANnel{channel}:DISPlay ON") # Turns the channel graphics on
+
+        print(f"Setting Channel {channel} coupling to {coupling}...")
+        self.scope.write(f":CHANnel{channel}:COUPling {coupling}")
+
+    def configure_probe(scope, channel: int, attenuation: str):
+        print(f"Ensuring Channel {channel} is ON...")
+        scope.write(f":CHANnel{channel}:DISPlay ON") # Turns the channel graphics on
+        
+        print(f"Setting Channel {channel} probe attenuation to {attenuation}...")
+        scope.write(f":CHANnel{channel}:PROBe {attenuation}")
+
     def toggle_invert(self, channel: int):
         print(f"Ensuring Channel {channel} is ON...")
         self.scope.write(f":CHANnel{channel}:DISPlay ON") # Turns the channel graphics on
@@ -217,8 +231,9 @@ class ScopeApp:
 
         self.terminal_frame.grid_rowconfigure(0,weight=6)
         self.terminal_frame.grid_rowconfigure(1,weight=4)
-        self.terminal_frame.grid_columnconfigure(0, weight=1)   # <-- add this
+        self.terminal_frame.grid_columnconfigure(0, weight=1)
 
+        # --- Inside bottom_task Frame Layout ---
         # Fixed-size container that will NOT grow to fit its contents
         self.live_view_container = tk.Frame(self.terminal_frame, bg="black")
         self.live_view_container.grid(row=0, column=0, sticky="nsew")
@@ -243,8 +258,24 @@ class ScopeApp:
             self.bottomtaskbar_frame, textvariable=self.volt_div_var,
             font=self.button_font, state="readonly"
         )
-
-        # --- Inside Channel 1 Frame Layout ---
+        self.lbl_coupling = tk.Label(
+            self.bottomtaskbar_frame, text="COUPLING", font=self.button_font,
+            fg="#ffffff", bg="#1e1e1e"
+        )
+        self.coupling_channel_var = tk.StringVar()
+        self.coup_channel = ttk.Combobox(
+            self.bottomtaskbar_frame, textvariable=self.coupling_channel_var,
+            font=self.button_font, state="readonly"
+        )
+        self.lbl_probe_conf = tk.Label(
+            self.bottomtaskbar_frame, text="PROBE", font=self.button_font,
+            fg="#ffffff", bg="#1e1e1e"
+        )
+        self.probe_channel_var = tk.StringVar()
+        self.probe_config_channel = ttk.Combobox(
+            self.bottomtaskbar_frame, textvariable=self.probe_channel_var,
+            font=self.button_font, state="readonly"
+        )
         self.rad_ch1 = tk.Radiobutton(
             self.bottomtaskbar_frame, text="Configure CH1", 
             variable=self.active_channel, value=1,
@@ -271,12 +302,14 @@ class ScopeApp:
         self.btn_invert = tk.Button(
             self.bottomtaskbar_frame, text="INVERT", font=self.button_font,
             bg="#d8cf48", fg="#3c0854", activebackground="#f2e640", activeforeground="#230332",
-            bd=0 , command=self.invert_signal
+            bd=0 , command=self.invert_signal , state="disabled"
         )
         # The actual terminal frame container aligned nicely via Grid layout
         text_container_frame = tk.Frame(self.bottomtaskbar_frame, bg="#000000", bd=1, relief="solid")
         text_container_frame.grid(column=3, row=1, rowspan=4, columnspan=3, sticky="nsew", pady=10)
 
+        text_container_frame = tk.Frame(self.bottomtaskbar_frame, bg="#000000", bd=1, relief="solid")
+        text_container_frame.grid(column=3, row=1, rowspan=4, columnspan=3, sticky="nsew", pady=10)
         # Make the container frame itself expandable
         text_container_frame.grid_rowconfigure(0, weight=1)
         text_container_frame.grid_columnconfigure(0, weight=1)
@@ -292,7 +325,6 @@ class ScopeApp:
             width=75,   # characters wide
             height=10   # lines tall
         )
-        # <-- THIS WAS MISSING: actually place the widget
         self.terminal_log.grid(row=0, column=0, sticky="nsew")
 
         #-----CHECKBOX FOR CHANNELS-----------
@@ -308,6 +340,16 @@ class ScopeApp:
         self.volt_div.current(0)
         self.volt_div.grid(column=1, row=1, columnspan=2, padx=5, pady=(50,10), sticky="ew")
         self.volt_div.bind("<<ComboboxSelected>>", self.change_volt_div)
+        self.lbl_coupling.grid(column=1, row=3 ,padx=5, pady=(2, 22), sticky="w") 
+        self.coup_channel['values'] = ('AC','DC','GND')
+        self.coup_channel.current(0)
+        self.coup_channel.grid(column=1, row=3, columnspan=2, padx=5, pady=(50,10), sticky="ew")
+        self.coup_channel.bind("<<ComboboxSelected>>", self.change_coupling)
+        self.lbl_probe_conf.grid(column=1, row=4 ,padx=5, pady=(2, 22), sticky="w") 
+        self.probe_config_channel['values'] = ('X0.1','X0.2','X0.5','X1','X2','X5','X10')
+        self.probe_config_channel.current(0)
+        self.probe_config_channel.grid(column=1, row=4, columnspan=2, padx=5, pady=(50,10), sticky="ew")
+        self.probe_config_channel.bind("<<ComboboxSelected>>", self.probe_setting)
 
         #---Right-Side Container 20%---
         self.right_column = ttk.Frame(self.main_container, padding="5")
@@ -526,6 +568,7 @@ class ScopeApp:
             self.btn_screenshot.config(state="normal")
             self.btn_autoset.config(state="normal")
             self.btn_live_view.config(state="normal")
+            self.btn_invert.config(state="normal")
             
             self.txt_idn_display.config(state="normal")      
             self.txt_idn_display.delete(0, tk.END)             
@@ -556,6 +599,7 @@ class ScopeApp:
         self.btn_autoset.config(state="disabled")
         self.live_view_running = False
         self.btn_live_view.config(state="disabled", text="START LIVE VIEW", bg="#3498db")
+        self.btn_invert.config(state="disabled")
         self.txt_idn_display.config(state="normal")
         self.txt_idn_display.delete(0, tk.END)             
         self.txt_idn_display.insert(0, "Scope : Not Connect") 
@@ -690,6 +734,19 @@ class ScopeApp:
             self.oscilloscope.voltage_scale(int(selected_channel),float(scpi_value))
         except Exception as e:
             messagebox.showerror("SCPI Error", f"Failed to set vertical scale:\n{e}")
+
+    def change_coupling(self, event = None):
+        if not self.oscilloscope:
+            messagebox.showerror("Error", "Oscilloscope is not connected!")
+            return
+            
+        selected_display = self.coup_channel.get()
+        selected_channel = self.active_channel.get()
+        
+        try:
+            self.oscilloscope.configure_coupling(int(selected_channel),selected_display)
+        except Exception as e:
+            messagebox.showerror("SCPI Error", f"Failed to set vertical scale:\n{e}")
     
     def invert_signal(self):
         if not self.oscilloscope:
@@ -715,6 +772,18 @@ class ScopeApp:
         scpi_value = time_map.get(selected_display, 0.001)
         try:
             self.oscilloscope.time_scale(float(scpi_value))
+        except Exception as e:
+            messagebox.showerror("SCPI Error", f"Failed to set vertical scale:\n{e}")
+        
+    def probe_setting(self, event=None):
+        if not self.oscilloscope:
+            messagebox.showerror("Error", "Oscilloscope is not connected!")
+            return
+            
+        selected_display = self.probe_config_channel.get()
+        selected_channel = self.active_channel.get()
+        try:
+            self.oscilloscope.configure_probe(int(selected_channel),str(selected_display))
         except Exception as e:
             messagebox.showerror("SCPI Error", f"Failed to set vertical scale:\n{e}")
     
