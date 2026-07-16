@@ -42,9 +42,6 @@ class Scope:
                 
         raise RuntimeError("No RIGOL oscilloscope found.")
     
-    # ----------------------------------------------------
-    # NEW OOP INSTRUMENT CONTROL METHODS 
-    # ----------------------------------------------------
     def get_idn(self):
         """Queries and returns the *IDN identity string."""
         if self.scope:
@@ -71,6 +68,13 @@ class Scope:
         """Freezes the scope acquisition state."""
         if self.scope:
             self.scope.write(":STOP")
+
+    def voltage_scale(self, channel: int, scale: float):
+        print(f"Ensuring Channel {channel} is ON...")
+        self.scope.write(f":CHANnel{channel}:DISPlay ON") # Turns the channel graphics on
+        
+        print(f"Setting Channel {channel} configure vertical scale to {scale}...")
+        self.scope.write(f":CHANnel{channel}:SCAle {scale}")
 
     def set_trigger_sweep(self, mode):
         """Sets trigger sweep mode (AUTO, NORMAL, or SINGLE)."""
@@ -184,29 +188,70 @@ class ScopeApp:
         self.left_column = ttk.Frame(self.main_container, padding="5")
         self.left_column.grid(row=0, column=0, sticky="nsew")
         
-        for i in range(4):
-            self.left_column.grid_rowconfigure(i, weight=1)
+        self.left_column.grid_rowconfigure(0, weight=1)
         self.left_column.grid_columnconfigure(0, weight=1)
 
         # CH1
-        ch1_title_label = ttk.Label(self.left_column, text="Channel 1", font=self.channel_font)
-        self.ch1_frame = ttk.LabelFrame(self.left_column, labelwidget=ch1_title_label)
-        self.ch1_frame.grid(row=0, column=0, pady=5, sticky="nsew")
+        terminal_label = ttk.Label(self.left_column, text="Terminal", font=self.channel_font)
+        self.terminal_frame = ttk.LabelFrame(self.left_column, labelwidget=terminal_label)
+        self.terminal_frame.grid(row=0, column=0, pady=5, sticky="nsew")
 
-        # CH2
-        ch2_title_label = ttk.Label(self.left_column, text="Channel 2", font=self.channel_font)
-        self.ch2_frame = ttk.LabelFrame(self.left_column, labelwidget=ch2_title_label)
-        self.ch2_frame.grid(row=1, column=0, pady=5, sticky="nsew")
+        self.terminal_frame.grid_rowconfigure(0,weight=6)
+        self.terminal_frame.grid_rowconfigure(1,weight=4)
 
-        # CH3
-        ch3_title_label = ttk.Label(self.left_column, text="Channel 3", font=self.channel_font)
-        self.ch3_frame = ttk.LabelFrame(self.left_column, labelwidget=ch3_title_label)
-        self.ch3_frame.grid(row=2, column=0, pady=5, sticky="nsew")
+        self.bottomtaskbar_frame = ttk.Frame(self.terminal_frame,padding=5)
+        self.bottomtaskbar_frame.grid(row=1,sticky="nsew")
+        self.bottomtaskbar_frame.grid_rowconfigure(0, weight=1)
+        self.bottomtaskbar_frame.grid_columnconfigure(0, weight=1)
+        self.active_channel = tk.IntVar(value=1)
 
-        # CH4
-        ch4_title_label = ttk.Label(self.left_column, text="Channel 4", font=self.channel_font)
-        self.ch4_frame = ttk.LabelFrame(self.left_column, labelwidget=ch4_title_label)
-        self.ch4_frame.grid(row=3, column=0, pady=5, sticky="nsew")
+        self.lbl_volt_div_ch1 = tk.Label(
+            self.bottomtaskbar_frame, text="VOLT/DIVIDE", font=self.button_font,
+            fg="#ffffff", bg="#1e1e1e"
+        )
+        self.volt_div_var = tk.StringVar()
+        self.volt_div = ttk.Combobox(
+            self.bottomtaskbar_frame, textvariable=self.volt_div_var,
+            font=self.button_font, state="readonly"
+        )
+
+        # --- Inside Channel 1 Frame Layout ---
+        self.rad_ch1 = tk.Radiobutton(
+            self.bottomtaskbar_frame, text="Configure CH1", 
+            variable=self.active_channel, value=1,
+            font=self.button_font
+        )
+
+        self.rad_ch2 = tk.Radiobutton(
+            self.bottomtaskbar_frame, text="Configure CH2", 
+            variable=self.active_channel, value=2,
+            font=self.button_font
+        )
+
+        self.rad_ch3 = tk.Radiobutton(
+            self.bottomtaskbar_frame, text="Configure CH3", 
+            variable=self.active_channel, value=3,
+            font=self.button_font
+        )
+
+        self.rad_ch4 = tk.Radiobutton(
+            self.bottomtaskbar_frame, text="Configure CH4", 
+            variable=self.active_channel, value=4,
+            font=self.button_font
+        )
+
+        #-----CHECKBOX FOR CHANNELS-----------
+        self.rad_ch1.grid(column=0, row=1, padx=5, pady=5, sticky="w")
+        self.rad_ch2.grid(column=0, row=2, padx=5, pady=5, sticky="w")
+        self.rad_ch3.grid(column=0, row=3, padx=5, pady=5, sticky="w")
+        self.rad_ch4.grid(column=0, row=4, padx=5, pady=5, sticky="w")
+
+
+        self.lbl_volt_div_ch1.grid(column=1, row=1, padx=5, pady=(2, 22), sticky="w") 
+        self.volt_div['values'] = ('500 mV','1 V', '2 V', '10 V')
+        self.volt_div.current(0)
+        self.volt_div.grid(column=1, row=1, columnspan=2, padx=5, pady=(50,10), sticky="ew")
+        self.volt_div.bind("<<ComboboxSelected>>", self.change_volt_div)
 
         #---Right-Side Container 20%---
         self.right_column = ttk.Frame(self.main_container, padding="5")
@@ -521,7 +566,7 @@ class ScopeApp:
     
         selected_slope = self.trigger_slope_var.get()
         try:
-            self.oscilloscope.set_trigger_source(selected_slope)
+            self.oscilloscope.set_trigger_slope(selected_slope)
         except Exception as e:
             messagebox.showerror("SCPI Error", f"Failed to set trigger mode:\n{e}")
 
@@ -532,9 +577,30 @@ class ScopeApp:
     
         selected_coup = self.trigger_coup_var.get()
         try:
-            self.oscilloscope.set_trigger_source(selected_coup)
+            self.oscilloscope.set_trigger_coupling(selected_coup)
         except Exception as e:
             messagebox.showerror("SCPI Error", f"Failed to set trigger mode:\n{e}")
+    
+    def change_volt_div(self, event = None):
+        if not self.oscilloscope:
+            messagebox.showerror("Error", "Oscilloscope is not connected!")
+            return
+            
+        selected_display = self.volt_div.get()
+        volt_map = {
+            '500 mV': '0.5',
+            '1 V': '1.0',
+            '2 V': '2.0',
+            '10 V': '10.0'
+        }
+        scpi_value = volt_map.get(selected_display, 1.0)
+
+        selected_channel = self.active_channel.get()
+        
+        try:
+            self.oscilloscope.voltage_scale(int(selected_channel),float(scpi_value))
+        except Exception as e:
+            messagebox.showerror("SCPI Error", f"Failed to set vertical scale:\n{e}")
     
 if __name__ == "__main__":
     root = tk.Tk()
