@@ -77,6 +77,12 @@ class Scope:
         if self.scope:
             # Rigol sweep parameter accepts lowercase or uppercase modes directly
             self.scope.write(f":TRIGger:SWEep {mode.upper()}")
+    
+    def trigger_autoset(self):
+        """Triggers the oscilloscope Autoset function."""
+        print("Executing Autoset...")
+        self.scope.write(":AUToset")
+        self.scope.query("*OPC?") # Waits until the autoset operation is complete
 
     def disconnect(self):
         """Close the instrument and VISA resource manager."""
@@ -89,6 +95,34 @@ class Scope:
             self.rm.close()
             self.rm = None
             print("Resource Manager closed.")
+    
+    def capture_screenshot(self):
+        """Capture a PNG screenshot from a DHO800 series oscilloscope."""
+        if not self.scope:
+            raise RuntimeError("No instrument connected.")
+            
+        old_timeout = self.scope.timeout
+        try:
+            self.scope.timeout = 10000  # Expand timeout window for image transfer data block
+            png_data = self.scope.query_binary_values(":DISPlay:SNAP?", datatype='B', container=bytes)
+            
+            if not png_data.startswith(b"\x89PNG"):
+                raise RuntimeError("Returned data stream does not contain a valid PNG magic header.")
+            return png_data
+        finally:
+            self.scope.timeout = old_timeout
+
+    def save_png(self, data, directory="."):
+        """Saves binary PNG data to storage disk with a systematic timestamp name format."""
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        
+        # Ensure target folder directory exists smoothly
+        folder = Path(directory)
+        folder.mkdir(parents=True, exist_ok=True)
+        
+        filename = folder / f"dho800_{timestamp}.png"
+        filename.write_bytes(data)
+        return filename
 
 # =========================================================================
 # USER INTERFACE LAYER (Manages only layout updates and user clicks)
@@ -243,9 +277,24 @@ class ScopeApp:
         self.drop_trig_mode.bind("<<ComboboxSelected>>", self.change_trigger_mode)
 
         # Storage Frame
-        storage_config_label = ttk.Label(self.right_column, text="Storage", font=self.default_font)
+        storage_config_label = ttk.Label(self.right_column, text="Storage and Etc.", font=self.default_font)
         self.storage_frame = ttk.LabelFrame(self.right_column, labelwidget=storage_config_label)
         self.storage_frame.grid(row=3, column=0, pady=5, sticky="nsew")
+
+
+        self.btn_screenshot = tk.Button(
+            self.storage_frame, text="CAPTURE SCREENSHOT", font=self.button_font,
+            bg="#9b59b6", fg="#ffffff", activebackground="#8e44ad", activeforeground="#ffffff",
+            bd=0, state="disabled", command=self.take_screenshot
+        )
+        self.btn_autoset = tk.Button(
+            self.storage_frame, text="AUTOSET", font=self.button_font,
+            bg="#080808", fg="#1274e4", activebackground="#000000", activeforeground="#044fa4",
+            bd=0, state="disabled", command=self.take_screenshot
+        )
+        self.btn_screenshot.grid(column=0, row=0, padx=10, pady=10, ipadx=5, ipady=5, sticky="ew")
+        self.btn_autoset.grid(column=0, row=1, padx=10, pady=10, ipadx=5, ipady=5, sticky="ew")
+
 
     # ==========================================
     # EVENT LOGIC METHODS (Clean UI Layer)
@@ -265,6 +314,7 @@ class ScopeApp:
             self.btn_sendcmd.config(state="normal")
             self.btn_start.config(state="normal")
             self.btn_stop.config(state="normal")
+            self.btn_screenshot.config(state="normal")
             
             self.txt_idn_display.config(state="normal")      
             self.txt_idn_display.delete(0, tk.END)             
@@ -291,6 +341,7 @@ class ScopeApp:
         self.btn_sendcmd.config(state="disabled")
         self.btn_start.config(state="disabled")
         self.btn_stop.config(state="disabled")
+        self.btn_screenshot.config(state="disabled")
 
     def send_scpi_command(self):
         if not self.oscilloscope:
@@ -316,7 +367,7 @@ class ScopeApp:
             messagebox.showerror("Error", "Oscilloscope is not connected!")
             return
         try:
-            self.oscilloscope.run() # OOP Abstraction
+            self.oscilloscope.run()
         except Exception as e:
             messagebox.showerror("SCPI Error", f"Failed to send RUN command:\n{e}")
 
@@ -325,7 +376,7 @@ class ScopeApp:
             messagebox.showerror("Error", "Oscilloscope is not connected!")
             return 
         try:
-            self.oscilloscope.stop() # OOP Abstraction
+            self.oscilloscope.stop()
         except Exception as e:
             messagebox.showerror("SCPI Error", f"Failed to send STOP command:\n{e}")
 
@@ -336,9 +387,26 @@ class ScopeApp:
         
         selected_mode = self.trigger_mode_var.get()
         try:
-            self.oscilloscope.set_trigger_sweep(selected_mode) # OOP Abstraction    
+            self.oscilloscope.set_trigger_sweep(selected_mode)  
         except Exception as e:
             messagebox.showerror("SCPI Error", f"Failed to set trigger mode:\n{e}")
+    
+    def take_screenshot(self):
+        """Action routine triggered by clicking the layout button."""
+        if not self.oscilloscope:
+            messagebox.showerror("Error", "Oscilloscope is not connected!")
+            return
+            
+        try:
+            image_data = self.oscilloscope.capture_screenshot()
+            saved_path = self.oscilloscope.save_png(image_data, directory="./screenshots")
+            
+            messagebox.showinfo("Screenshot Saved", f"Successfully saved:\n{saved_path.resolve()}")
+        except Exception as e:
+            messagebox.showerror("Capture Error", f"Failed to take screenshot:\n{e}")
+    
+    def autoset_command(self):
+        pass
 
 if __name__ == "__main__":
     root = tk.Tk()
