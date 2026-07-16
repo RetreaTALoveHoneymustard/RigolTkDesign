@@ -94,13 +94,16 @@ class Scope:
         print(f"Setting Channel {channel} toggle invert {new_status}...")
         self.scope.write(f":CHANnel{channel}:INVert {new_status}")
 
-
     def voltage_scale(self, channel: int, scale: float):
         print(f"Ensuring Channel {channel} is ON...")
         self.scope.write(f":CHANnel{channel}:DISPlay ON") # Turns the channel graphics on
         
         print(f"Setting Channel {channel} configure vertical scale to {scale}...")
         self.scope.write(f":CHANnel{channel}:SCAle {scale}")
+
+    def trigger_level(self, level: float):
+        print(f"Setting trigger level to {level}V...")
+        self.scope.write(f":TRIGger:PULSe:LEVel {level}")
 
     def set_trigger_sweep(self, mode):
         """Sets trigger sweep mode (AUTO, NORMAL, or SINGLE)."""
@@ -307,9 +310,7 @@ class ScopeApp:
         # The actual terminal frame container aligned nicely via Grid layout
         text_container_frame = tk.Frame(self.bottomtaskbar_frame, bg="#000000", bd=1, relief="solid")
         text_container_frame.grid(column=3, row=1, rowspan=4, columnspan=3, sticky="nsew", pady=10)
-
-        text_container_frame = tk.Frame(self.bottomtaskbar_frame, bg="#000000", bd=1, relief="solid")
-        text_container_frame.grid(column=3, row=1, rowspan=4, columnspan=3, sticky="nsew", pady=10)
+        
         # Make the container frame itself expandable
         text_container_frame.grid_rowconfigure(0, weight=1)
         text_container_frame.grid_columnconfigure(0, weight=1)
@@ -325,6 +326,7 @@ class ScopeApp:
             width=75,   # characters wide
             height=10   # lines tall
         )
+        # <-- THIS WAS MISSING: actually place the widget
         self.terminal_log.grid(row=0, column=0, sticky="nsew")
 
         #-----CHECKBOX FOR CHANNELS-----------
@@ -350,6 +352,7 @@ class ScopeApp:
         self.probe_config_channel.current(0)
         self.probe_config_channel.grid(column=1, row=4, columnspan=2, padx=5, pady=(50,10), sticky="ew")
         self.probe_config_channel.bind("<<ComboboxSelected>>", self.probe_setting)
+
 
         #---Right-Side Container 20%---
         self.right_column = ttk.Frame(self.main_container, padding="5")
@@ -414,6 +417,16 @@ class ScopeApp:
             self.trigger_frame, textvariable=self.trigger_coup_var,
             font=self.button_font, state="readonly"
         )
+        self.lbl_levels_trig = tk.Label(
+            self.trigger_frame, text="TRIGGER LEVEL", font=self.button_font,
+            fg="#ffffff", bg="#1e1e1e"
+        )
+        self.btn_sendleveltrg = tk.Button(
+            self.trigger_frame, text="APPLY", font=self.button_font,
+            bg="#b9c847", fg="#000000", activebackground="#b9bf8e", activeforeground="#000000",
+            bd=0, state="disabled", command=self.send_level_trig
+        )
+
         #-------- Trigger Source-----------#
         self.lbl_trg_source.grid(column=0, row=0, padx=5, pady=(2, 22), sticky="w") 
         self.drop_trig_source['values'] = ('CH1', 'CH2', 'CH3','CH4','NONE')
@@ -434,6 +447,15 @@ class ScopeApp:
         self.drop_trig_coup.current(1)
         self.drop_trig_coup.grid(column=5, row=0, columnspan=2, padx=5, pady=(50,10), sticky="ew")
         self.drop_trig_coup.bind("<<ComboboxSelected>>", self.change_trigger_coupling)
+
+        #----Trigger Level------#
+        self.lbl_levels_trig.grid(column=0,row=1,columnspan=2,sticky="ew",padx =5)
+        self.level_trig_input = tk.Entry(self.trigger_frame, font=self.button_font)
+        self.level_trig_input.insert(0,"0") 
+        self.level_trig_input.grid(column=0,row=1,columnspan=2,sticky="ew",padx =5,pady=(50,10))
+        self.btn_sendleveltrg.grid(column=2,row=1,ipadx=5,ipady=5,sticky="ew",padx=5,pady=(50,10),columnspan=2)
+
+
 
         # Home / System Control Frame
         home_config_label = ttk.Label(self.right_column, text="Start & Stop / SCPI Commands", font=self.default_font)
@@ -569,6 +591,7 @@ class ScopeApp:
             self.btn_autoset.config(state="normal")
             self.btn_live_view.config(state="normal")
             self.btn_invert.config(state="normal")
+            self.btn_sendleveltrg.config(state="normal")
             
             self.txt_idn_display.config(state="normal")      
             self.txt_idn_display.delete(0, tk.END)             
@@ -600,6 +623,7 @@ class ScopeApp:
         self.live_view_running = False
         self.btn_live_view.config(state="disabled", text="START LIVE VIEW", bg="#3498db")
         self.btn_invert.config(state="disabled")
+        self.btn_sendleveltrg.config(state="disabled")
         self.txt_idn_display.config(state="normal")
         self.txt_idn_display.delete(0, tk.END)             
         self.txt_idn_display.insert(0, "Scope : Not Connect") 
@@ -787,6 +811,20 @@ class ScopeApp:
         except Exception as e:
             messagebox.showerror("SCPI Error", f"Failed to set vertical scale:\n{e}")
     
+    def send_level_trig(self):
+        if not self.oscilloscope:
+            messagebox.showerror("No Connection", "Connect to the scope first!")
+            return
+            
+        levels_trg = self.level_trig_input.get().strip()
+        if not levels_trg:
+            return
+            
+        try:
+            self.oscilloscope.trigger_level(float(levels_trg))
+        except Exception as e:
+            messagebox.showerror("Command Error", f"Execution failed:\n{e}")
+
     def log_to_terminal(self, message: str):
         self.terminal_log.config(state="normal")
         timestamp = datetime.now().strftime("%H:%M:%S")
