@@ -221,9 +221,17 @@ class ScopeApp:
         self.oscilloscope = None
         self.live_view_running = False
         self.channel_font = tkfont.Font(family="Candara Light", size=14, weight="bold")
-        self.default_font = tkfont.Font(family="Yu Gothic UI Semilight", size="12")
+        self.default_font = tkfont.Font(family="Yu Gothic UI Semilight", size="12",weight="bold")
         self.button_font = tkfont.Font(family="Yu Gothic UI Semilight", size="8", weight="bold")
-        
+        self.style = ttk.Style()
+        self.style.theme_use('clam')
+        self.style.configure("Default.TLabelframe", background="#303030")
+        self.style.configure("Horizontal.TLabelframe.Label", background="#303030",foreground="#C99C0A",font=self.default_font)
+        self.style.configure("Trigger.TLabelframe.Label", background="#303030",foreground="#B9CF0D",font=self.default_font)
+        self.style.configure("System.TLabelframe.Label", background="#303030",foreground="#1CC209",font=self.default_font)
+        self.style.configure("Storage.TLabelframe.Label", background="#303030",foreground="#C446EE",font=self.default_font)
+
+
         # ---Main Container---
         self.main_container = ttk.Frame(root, padding="10")
         self.main_container.pack(fill=tk.BOTH, expand=True)
@@ -257,7 +265,7 @@ class ScopeApp:
         self.live_view_label = tk.Label(self.live_view_container, bg="black")
         self.live_view_label.pack(fill="both", expand=True)
 
-        self.bottomtaskbar_frame = ttk.Frame(self.terminal_frame,padding=5)
+        self.bottomtaskbar_frame = ttk.Frame(self.terminal_frame,padding=5,style="Default.TLabelframe")
         self.bottomtaskbar_frame.grid(row=1,sticky="nsew")
         self.bottomtaskbar_frame.grid_rowconfigure(0, weight=1)
         self.bottomtaskbar_frame.grid_columnconfigure(0, weight=1)
@@ -373,8 +381,8 @@ class ScopeApp:
         self.right_column.grid_columnconfigure(0, weight=1)
 
         # Horizontal
-        horizontal_config_label = ttk.Label(self.right_column, text="Horizontal Configure", font=self.default_font)
-        self.horizontal_frame = ttk.LabelFrame(self.right_column, labelwidget=horizontal_config_label)
+        horizontal_config_label = ttk.Label(self.right_column, text="Horizontal Configure",style="Horizontal.TLabelframe.Label")
+        self.horizontal_frame = ttk.LabelFrame(self.right_column, labelwidget=horizontal_config_label,style="Default.TLabelframe")
         self.horizontal_frame.grid(row=0, column=0, pady=5, sticky="nsew")
 
         self.lbl_tdiv = tk.Label(
@@ -396,8 +404,8 @@ class ScopeApp:
 
 
         # Trigger
-        trigger_config_label = ttk.Label(self.right_column, text="Trigger Configure", font=self.default_font)
-        self.trigger_frame = ttk.LabelFrame(self.right_column, labelwidget=trigger_config_label)
+        trigger_config_label = ttk.Label(self.right_column, text="Trigger Configure", font=self.default_font,style="Trigger.TLabelframe.Label")
+        self.trigger_frame = ttk.LabelFrame(self.right_column, labelwidget=trigger_config_label,style="Default.TLabelframe")
         self.trigger_frame.grid(row=1, column=0, pady=5, sticky="nsew")
 
         self.lbl_trg_source = tk.Label(
@@ -468,8 +476,8 @@ class ScopeApp:
 
 
         # Home / System Control Frame
-        home_config_label = ttk.Label(self.right_column, text="Start & Stop / SCPI Commands", font=self.default_font)
-        self.system_frame = ttk.LabelFrame(self.right_column, labelwidget=home_config_label)
+        home_config_label = ttk.Label(self.right_column, text="Start & Stop / SCPI Commands", font=self.default_font,style="System.TLabelframe.Label")
+        self.system_frame = ttk.LabelFrame(self.right_column, labelwidget=home_config_label,style="Default.TLabelframe")
         self.system_frame.grid(row=2, column=0, pady=5, sticky="nsew")
         
         for r in range(4): # Set up columns
@@ -554,8 +562,8 @@ class ScopeApp:
         self.drop_trig_mode.bind("<<ComboboxSelected>>", self.change_mode)
 
         # Storage Frame
-        storage_config_label = ttk.Label(self.right_column, text="Storage and Etc.", font=self.default_font)
-        self.storage_frame = ttk.LabelFrame(self.right_column, labelwidget=storage_config_label)
+        storage_config_label = ttk.Label(self.right_column, text="Storage and Etc.",style="Storage.TLabelframe.Label")
+        self.storage_frame = ttk.LabelFrame(self.right_column, labelwidget=storage_config_label,style="Default.TLabelframe")
         self.storage_frame.grid(row=3, column=0, pady=5, sticky="nsew")
 
         self.btn_live_view = tk.Button(
