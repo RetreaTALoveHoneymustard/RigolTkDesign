@@ -84,6 +84,42 @@ class Scope:
         self.scope.write(":AUToset")
         self.scope.query("*OPC?") # Waits until the autoset operation is complete
 
+    def set_trigger_source(self, source="CHAN1"):
+        """
+        Sets the edge trigger source.
+        Accepted arguments: 'CHAN1', 'CHAN2', 'CHAN3', 'CHAN4', 'EXT'
+        """
+        if self.scope:
+            # Reformat string slightly to ensure Rigol expected syntax matching
+            src = source.upper()
+            if src.startswith("CH"):
+                src = src.replace("CH", "CHAN")
+            self.scope.write(f":TRIGger:EDGe:SOURce {src}")
+
+    def set_trigger_slope(self, slope="POSitive"):
+        """
+        Sets the edge trigger slope direction.
+        Accepted arguments: 'POSitive' (Rising), 'NEGative' (Falling), 'RFALl' (Both)
+        """
+        if self.scope:
+            slp = slope.upper()
+            if slp in ["RISING", "POS"]:
+                slp = "POSitive"
+            elif slp in ["FALLING", "NEG"]:
+                slp = "NEGative"
+            elif slp in ["BOTH", "RFAL"]:
+                slp = "RFALl"
+                
+            self.scope.write(f":TRIGger:EDGe:SLOPe {slp}")
+
+    def set_trigger_coupling(self, coupling="DC"):
+        """
+        Sets the trigger signal coupling.
+        Accepted arguments: 'AC', 'DC', 'LFR' (Low Freq Reject), 'HFR' (High Freq Reject)
+        """
+        if self.scope:
+            self.scope.write(f":TRIGger:COUPling {coupling.upper()}")
+
     def disconnect(self):
         """Close the instrument and VISA resource manager."""
         if hasattr(self, 'scope') and self.scope is not None:
@@ -190,6 +226,54 @@ class ScopeApp:
         self.trigger_frame = ttk.LabelFrame(self.right_column, labelwidget=trigger_config_label)
         self.trigger_frame.grid(row=1, column=0, pady=5, sticky="nsew")
 
+        self.lbl_trg_source = tk.Label(
+            self.trigger_frame, text="SOURCE", font=self.button_font,
+            fg="#ffffff", bg="#1e1e1e"
+        )
+        self.trigger_source_var = tk.StringVar()
+        self.drop_trig_source = ttk.Combobox(
+            self.trigger_frame, textvariable=self.trigger_source_var,
+            font=self.button_font, state="readonly"
+        )
+        self.lbl_trg_slope = tk.Label(
+            self.trigger_frame, text="SLOPE", font=self.button_font,
+            fg="#ffffff", bg="#1e1e1e"
+        )
+        self.trigger_slope_var = tk.StringVar()
+        self.drop_trig_slope = ttk.Combobox(
+            self.trigger_frame, textvariable=self.trigger_slope_var,
+            font=self.button_font, state="readonly"
+        )
+        self.lbl_trg_coupling = tk.Label(
+            self.trigger_frame, text="COUPLING", font=self.button_font,
+            fg="#ffffff", bg="#1e1e1e"
+        )
+        self.trigger_coup_var = tk.StringVar()
+        self.drop_trig_coup = ttk.Combobox(
+            self.trigger_frame, textvariable=self.trigger_coup_var,
+            font=self.button_font, state="readonly"
+        )
+        #-------- Trigger Source-----------#
+        self.lbl_trg_source.grid(column=0, row=0, padx=5, pady=(2, 22), sticky="w") 
+        self.drop_trig_source['values'] = ('CH1', 'CH2', 'CH3','CH4','NONE')
+        self.drop_trig_source.current(0)
+        self.drop_trig_source.grid(column=0, row=0, columnspan=2, padx=5, pady=(50,10), sticky="ew")
+        self.drop_trig_source.bind("<<ComboboxSelected>>", self.change_trigger_source)
+
+        #-------- Trigger Slope-----------#
+        self.lbl_trg_slope.grid(column=3, row=0, padx=5, pady=(2, 22), sticky="w") 
+        self.drop_trig_slope['values'] = ('RISING', 'FALLING', 'BOTH')
+        self.drop_trig_slope.current(0)
+        self.drop_trig_slope.grid(column=3, row=0, columnspan=2, padx=5, pady=(50,10), sticky="ew")
+        self.drop_trig_slope.bind("<<ComboboxSelected>>", self.change_trigger_slope)
+
+        #-------- Trigger Coupling-----------#
+        self.lbl_trg_coupling.grid(column=5, row=0, padx=5, pady=(2, 22), sticky="w") 
+        self.drop_trig_coup['values'] = ('AC', 'DC', 'LFR','HFR')
+        self.drop_trig_coup.current(1)
+        self.drop_trig_coup.grid(column=5, row=0, columnspan=2, padx=5, pady=(50,10), sticky="ew")
+        self.drop_trig_coup.bind("<<ComboboxSelected>>", self.change_trigger_coupling)
+
         # Home / System Control Frame
         home_config_label = ttk.Label(self.right_column, text="Start & Stop / SCPI Commands", font=self.default_font)
         self.system_frame = ttk.LabelFrame(self.right_column, labelwidget=home_config_label)
@@ -290,7 +374,7 @@ class ScopeApp:
         self.btn_autoset = tk.Button(
             self.storage_frame, text="AUTOSET", font=self.button_font,
             bg="#080808", fg="#1274e4", activebackground="#000000", activeforeground="#044fa4",
-            bd=0, state="disabled", command=self.take_screenshot
+            bd=0, state="disabled", command=self.autoset_command
         )
         self.btn_screenshot.grid(column=0, row=0, padx=10, pady=10, ipadx=5, ipady=5, sticky="ew")
         self.btn_autoset.grid(column=0, row=1, padx=10, pady=10, ipadx=5, ipady=5, sticky="ew")
@@ -315,6 +399,7 @@ class ScopeApp:
             self.btn_start.config(state="normal")
             self.btn_stop.config(state="normal")
             self.btn_screenshot.config(state="normal")
+            self.btn_autoset.config(state="normal")
             
             self.txt_idn_display.config(state="normal")      
             self.txt_idn_display.delete(0, tk.END)             
@@ -342,6 +427,7 @@ class ScopeApp:
         self.btn_start.config(state="disabled")
         self.btn_stop.config(state="disabled")
         self.btn_screenshot.config(state="disabled")
+        self.btn_autoset.config(state="disabled")
 
     def send_scpi_command(self):
         if not self.oscilloscope:
@@ -406,8 +492,50 @@ class ScopeApp:
             messagebox.showerror("Capture Error", f"Failed to take screenshot:\n{e}")
     
     def autoset_command(self):
-        pass
+        if not self.oscilloscope:
+            messagebox.showerror("Error", "Oscilloscope is not connected!")
+            return 
+        try:
+            self.oscilloscope.trigger_autoset()
+        except Exception as e:
+            messagebox.showerror("SCPI Error", f"Failed to send AUTOSET command:\n{e}")
 
+    def change_trigger_source(self, event=None):
+        if not self.oscilloscope:
+            messagebox.showerror("Error", "Oscilloscope is not connected!")
+            return
+    
+        selected_source = self.trigger_source_var.get()
+        try:
+            if selected_source == "NONE":
+                self.oscilloscope.set_trigger_source("EXT") 
+            else:
+                self.oscilloscope.set_trigger_source(selected_source)
+        except Exception as e:
+            messagebox.showerror("SCPI Error", f"Failed to set trigger mode:\n{e}")
+
+    def change_trigger_slope(self, event=None):
+        if not self.oscilloscope:
+            messagebox.showerror("Error", "Oscilloscope is not connected!")
+            return
+    
+        selected_slope = self.trigger_slope_var.get()
+        try:
+            self.oscilloscope.set_trigger_source(selected_slope)
+        except Exception as e:
+            messagebox.showerror("SCPI Error", f"Failed to set trigger mode:\n{e}")
+
+    def change_trigger_coupling(self, event=None):
+        if not self.oscilloscope:
+            messagebox.showerror("Error", "Oscilloscope is not connected!")
+            return
+    
+        selected_coup = self.trigger_coup_var.get()
+        try:
+            self.oscilloscope.set_trigger_source(selected_coup)
+        except Exception as e:
+            messagebox.showerror("SCPI Error", f"Failed to set trigger mode:\n{e}")
+    
 if __name__ == "__main__":
     root = tk.Tk()
     app = ScopeApp(root)
