@@ -1,7 +1,6 @@
 import tkinter as tk
 from tkinter import ttk , messagebox , font as tkfont
 import numpy as np
-import time
 import pyvisa
 from datetime import datetime
 from pathlib import Path
@@ -69,6 +68,21 @@ class Scope:
         if self.scope:
             self.scope.write(":STOP")
 
+    def toggle_invert(self, channel: int):
+        print(f"Ensuring Channel {channel} is ON...")
+        self.scope.write(f":CHANnel{channel}:DISPlay ON") # Turns the channel graphics on
+
+        
+        current_status = self.query_raw(f":CHANnel{channel}:INVert?").strip()
+        if current_status in ("1", "ON"):
+            new_status = "OFF"
+        else:
+            new_status = "ON"
+        
+        print(f"Setting Channel {channel} toggle invert {new_status}...")
+        self.scope.write(f":CHANnel{channel}:INVert {new_status}")
+
+
     def voltage_scale(self, channel: int, scale: float):
         print(f"Ensuring Channel {channel} is ON...")
         self.scope.write(f":CHANnel{channel}:DISPlay ON") # Turns the channel graphics on
@@ -135,7 +149,14 @@ class Scope:
             self.rm.close()
             self.rm = None
             print("Resource Manager closed.")
-    
+
+    def time_scale(self, scale: float):
+        """
+        Configures the horizontal time base scale (seconds per division).
+        """
+        print(f"Configure horizontal time scale to {scale} s/div...")
+        self.scope.write(f":TIMebase:SCALe {scale}")
+
     def capture_screenshot(self):
         """Capture a PNG screenshot from a DHO800 series oscilloscope."""
         if not self.scope:
@@ -239,6 +260,11 @@ class ScopeApp:
             variable=self.active_channel, value=4,
             font=self.button_font
         )
+        self.btn_invert = tk.Button(
+            self.bottomtaskbar_frame, text="INVERT", font=self.button_font,
+            bg="#d8cf48", fg="#3c0854", activebackground="#f2e640", activeforeground="#230332",
+            bd=0 , command=self.invert_signal
+        )
 
         #-----CHECKBOX FOR CHANNELS-----------
         self.rad_ch1.grid(column=0, row=1, padx=5, pady=5, sticky="w")
@@ -246,6 +272,7 @@ class ScopeApp:
         self.rad_ch3.grid(column=0, row=3, padx=5, pady=5, sticky="w")
         self.rad_ch4.grid(column=0, row=4, padx=5, pady=5, sticky="w")
 
+        self.btn_invert.grid(column=1 , row=2 , padx=5 , pady=5 , ipadx = 5 , ipady =5 , sticky="w")
 
         self.lbl_volt_div_ch1.grid(column=1, row=1, padx=5, pady=(2, 22), sticky="w") 
         self.volt_div['values'] = ('500 mV','1 V', '2 V', '10 V')
@@ -265,6 +292,24 @@ class ScopeApp:
         horizontal_config_label = ttk.Label(self.right_column, text="Horizontal Configure", font=self.default_font)
         self.horizontal_frame = ttk.LabelFrame(self.right_column, labelwidget=horizontal_config_label)
         self.horizontal_frame.grid(row=0, column=0, pady=5, sticky="nsew")
+
+        self.lbl_tdiv = tk.Label(
+            self.horizontal_frame, text="TIME/DIV", font=self.button_font,
+            fg="#ffffff", bg="#1e1e1e"
+        )
+
+        self.time_divide_var = tk.StringVar()
+        self.drop_time_div= ttk.Combobox(
+            self.horizontal_frame, textvariable=self.time_divide_var,
+            font=self.button_font, state="readonly"
+        )
+
+        self.lbl_tdiv.grid(column=0, row=0, padx=5, pady=(2, 22), sticky="w") 
+        self.drop_time_div['values'] = ('100 us', '200 us', '500 us','1 ms','2 ms','5 ms','10 ms')
+        self.drop_time_div.current(0)
+        self.drop_time_div.grid(column=0, row=0, columnspan=2, padx=5, pady=(50,10), sticky="ew")
+        self.drop_time_div.bind("<<ComboboxSelected>>", self.time_divide_configure)
+
 
         # Trigger
         trigger_config_label = ttk.Label(self.right_column, text="Trigger Configure", font=self.default_font)
@@ -602,6 +647,33 @@ class ScopeApp:
         except Exception as e:
             messagebox.showerror("SCPI Error", f"Failed to set vertical scale:\n{e}")
     
+    def invert_signal(self):
+        if not self.oscilloscope:
+            messagebox.showerror("Error", "Oscilloscope is not connected!")
+            return
+        
+        selected_channel = self.active_channel.get()
+        try:
+            self.oscilloscope.toggle_invert(int(selected_channel))
+
+        except Exception as e:
+            messagebox.showerror("SCPI Error", f"Failed to send RUN command:\n{e}")
+    
+    def time_divide_configure(self, event=None):
+        if not self.oscilloscope:
+            messagebox.showerror("Error", "Oscilloscope is not connected!")
+            return
+            
+        selected_display = self.drop_time_div.get()
+        time_map = {
+           '100 us' : 0.0001 , '200 us' : 0.0002, '500 us': 0.0005 ,'1 ms': 0.001,'2 ms': 0.002,'5 ms':0.005,'10 ms' : 0.010
+        }
+        scpi_value = time_map.get(selected_display, 0.001)
+        try:
+            self.oscilloscope.time_scale(float(scpi_value))
+        except Exception as e:
+            messagebox.showerror("SCPI Error", f"Failed to set vertical scale:\n{e}")
+
 if __name__ == "__main__":
     root = tk.Tk()
     app = ScopeApp(root)
