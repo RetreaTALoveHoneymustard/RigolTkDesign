@@ -688,7 +688,7 @@ class ScopeApp:
                 response = self.oscilloscope.query_raw(command)
                 self.log_to_terminal("Query Response", f"Sent: {command} Received: {response}")
             else:
-                self.oscilloscope.write(command)
+                self.oscilloscope.write_raw(command)
                 self.log_to_terminal("Command Sent", f"Successfully wrote: {command}")
         except Exception as e:
             self.log_to_terminal("Command Error", f"Execution failed: {e}")
