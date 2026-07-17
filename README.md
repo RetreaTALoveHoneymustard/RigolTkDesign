@@ -81,3 +81,7 @@ This separation means `Scope` can be reused independently of the GUI (e.g. in a 
 - Screenshot filenames are timestamped to the second; two captures within the same second will overwrite each other.
 - The `./screenshots` save directory is hardcoded (not configurable from the UI).
 - `find_rigol_instrument` connects to the *first* Rigol device found on USB; if multiple Rigol instruments are connected, which one gets selected is not deterministic.
+
+## License
+
+MIT
