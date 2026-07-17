@@ -862,15 +862,32 @@ class ScopeApp:
         if not self.oscilloscope:
             self.log_to_terminal("Error", "Oscilloscope is not connected!")
             return
-            
+
         selected_display = self.probe_config_channel.get()
         selected_channel = self.active_channel.get()
+
+        probe_map = {
+            'X0.1': '0.1',
+            'X0.2': '0.2',
+            'X0.5': '0.5',
+            'X1':   '1',
+            'X2':   '2',
+            'X5':   '5',
+            'X10':  '10',
+        }
+
+        attenuation_value = probe_map.get(selected_display,'1')
+
+        if attenuation_value is None:
+            self.log_to_terminal("Error", f"Unknown probe setting: {selected_display}")
+            return
+
         try:
-            self.oscilloscope.configure_probe(int(selected_channel),str(selected_display))
+            self.oscilloscope.configure_probe(int(selected_channel), attenuation_value)
             self.log_to_terminal("Successfully", f"Oscilloscope Channel{selected_channel} probe sets into: {selected_display} !")
         except Exception as e:
             self.log_to_terminal("SCPI Error", f"Failed to set probe attenuation: {e}")
-    
+
     def send_level_trig(self):
         if not self.oscilloscope:
             self.log_to_terminal("No Connection", "Connect to the scope first!")
